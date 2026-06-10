@@ -138,7 +138,7 @@ class ChatViewModel @Inject constructor(
             val agentConfig = AIAgentConfig.withSystemPrompt(
                 prompt = systemPrompt,
                 llm = LocalQwen3Model,
-                maxAgentIterations = 5,
+                maxAgentIterations = 10,
             )
 
             val agent: AIAgent<String, String> = GraphAgentBuilder<String, String>(
@@ -169,7 +169,13 @@ class ChatViewModel @Inject constructor(
             agent.close()
         } catch (e: Exception) {
             Log.e(TAG, "Agent run failed", e)
-            _uiState.update { it.copy(error = e.message, isGenerating = false) }
+            // Remove the empty placeholder assistant bubble so the chat doesn't show a blank bubble
+            _uiState.update { state ->
+                val trimmed = state.messages.dropLastWhile {
+                    it.role == ChatMessage.Role.Assistant && it.content.isBlank()
+                }
+                state.copy(messages = trimmed, error = e.message, isGenerating = false)
+            }
         }
     }
 
