@@ -131,6 +131,10 @@ class ChatViewModel @Inject constructor(
 
     private suspend fun runAgentTurn(userText: String) {
         try {
+            // Koog builds a fresh prompt each turn — the old KV cache from the previous
+            // agent run would cause n_new = n_tokens - n_past to go negative, skipping
+            // prefill entirely and producing garbage on the second and later turns.
+            withContext(Dispatchers.IO) { llama.resetCache() }
             val executor = LlamaPromptExecutor(llama, temperature = 0.7f, maxTokens = 1024)
             val registry = ToolRegistryBuilder().tools(AgentTools()).build()
 
