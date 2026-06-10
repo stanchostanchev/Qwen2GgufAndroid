@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:name=".MainApplication"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Qwen2Gguf"
+        android:supportsRtl="true">
+
+        <!-- Qualcomm exposes libOpenCL.so as a vendor public library.
+             This tag grants the app namespace access to it on API 29+. -->
+        <uses-native-library
+            android:name="libOpenCL.so"
+            android:required="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

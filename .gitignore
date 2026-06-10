@@ -1,0 +1,31 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Local config — never commit (contains machine-specific SDK path)
+local.properties
+
+# Model files — too large for git; download separately
+app/src/main/assets/*.gguf
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+
+# NDK / CMake generated
+.cxx/
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Kotlin / Java
+*.class
+out/
