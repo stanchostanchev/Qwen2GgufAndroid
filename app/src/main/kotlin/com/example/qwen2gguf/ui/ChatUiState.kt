@@ -223,6 +223,7 @@ enum class QwenModel(
     /** Qwen3 models support /no_think to suppress chain-of-thought output. */
     val isQwen3: Boolean = false,
 ) {
+    QWEN3_06B_Q4("Qwen3 0.6B Q4", "Qwen_Qwen3-0.6B-Q4_K_M.gguf", isQwen3 = true),
     QWEN3_17B_Q4("Qwen3 1.7B Q4", "Qwen_Qwen3-1.7B-Q4_K_M.gguf", isQwen3 = true),
     QWEN2_05B_Q4("Qwen2 0.5B Q4", "qwen2-0_5b-instruct-q4_k_m.gguf"),
     QWEN2_05B_Q8("Qwen2 0.5B Q8", "qwen2-0_5b-instruct-q8_0.gguf"),
@@ -251,7 +252,7 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
     val modelState: ModelState = ModelState.NotLoaded,
-    val selectedModel: QwenModel = QwenModel.QWEN3_17B_Q4,
+    val selectedModel: QwenModel = QwenModel.QWEN3_06B_Q4,
     val selectedSkill: Skill = Skill.ASSISTANT,
     val selectedTheme: FairyTaleTheme = FairyTaleTheme.PRINCESSES,
     val error: String? = null,
