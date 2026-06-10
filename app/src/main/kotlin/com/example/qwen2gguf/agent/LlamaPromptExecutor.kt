@@ -156,15 +156,22 @@ class LlamaPromptExecutor(
 
     // ── Response parser ───────────────────────────────────────────────────────
 
+    // Greedy [}] so nested objects like "arguments": {"key": "val"} are captured whole.
     private val toolCallRegex = Regex(
-        """<tool_call>\s*([{].*?[}])\s*</tool_call>""",
+        """<tool_call>\s*([{].*[}])\s*</tool_call>""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
     )
+    private val toolNameRegex = Regex(""""name"\s*:\s*"([^"]+)"""")
+    private val toolArgsRegex = Regex(""""arguments"\s*:\s*([{][^}]*[}])""")
 
     /**
      * Parses the raw generated text into a [Message.Assistant].
      * If the text contains `<tool_call>` blocks they are extracted as [MessagePart.Tool.Call] parts.
      * Otherwise the text is returned as a plain [MessagePart.Text].
+     *
+     * Small models (0.6B) sometimes emit malformed JSON like `"arguments: {}"` (key+value merged).
+     * The fallback path extracts `name` via regex and calls the tool with empty args so the
+     * agent loop keeps running instead of leaking the raw tool_call text into the chat bubble.
      */
     private fun parseResponse(raw: String): Message.Assistant {
         // Strip Qwen3 <think>…</think> block
@@ -173,12 +180,22 @@ class LlamaPromptExecutor(
         val toolMatches = toolCallRegex.findAll(text).toList()
         return if (toolMatches.isNotEmpty()) {
             val toolCallParts = toolMatches.mapNotNull { match ->
-                runCatching {
-                    val json = Json.parseToJsonElement(match.groupValues[1]) as JsonObject
-                    val name = json["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                val jsonStr = match.groupValues[1]
+                // Primary path: well-formed JSON
+                val primary = runCatching {
+                    val json = Json.parseToJsonElement(jsonStr) as JsonObject
+                    val name = json["name"]?.jsonPrimitive?.content ?: return@runCatching null
                     val args = json["arguments"]?.toString() ?: "{}"
                     MessagePart.Tool.Call(tool = name, args = args)
                 }.getOrNull()
+                if (primary != null) return@mapNotNull primary
+
+                // Fallback: extract name/args with regex when JSON is malformed
+                val name = toolNameRegex.find(jsonStr)?.groupValues?.get(1)
+                    ?: return@mapNotNull null
+                val args = toolArgsRegex.find(jsonStr)?.groupValues?.get(1) ?: "{}"
+                Log.w(TAG, "Malformed tool JSON, fallback extraction: name=$name args=$args")
+                MessagePart.Tool.Call(tool = name, args = args)
             }
             if (toolCallParts.isNotEmpty()) {
                 Log.d(TAG, "Parsed ${toolCallParts.size} tool call(s): ${toolCallParts.map { it.tool }}")
