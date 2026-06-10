@@ -157,7 +157,7 @@ class LlamaPromptExecutor(
     // ── Response parser ───────────────────────────────────────────────────────
 
     private val toolCallRegex = Regex(
-        """<tool_call>\s*(\{.*?})\s*</tool_call>""",
+        """<tool_call>\s*([{].*?[}])\s*</tool_call>""",
         setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
     )
 
