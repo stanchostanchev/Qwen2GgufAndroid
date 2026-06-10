@@ -34,9 +34,10 @@ class AgentTools : ToolSet {
 
     @Tool
     @LLMDescription(
-        "Returns a random story prompt suggestion for a given fairy tale theme. " +
+        "Returns a one-line creative prompt IDEA (not a full story) for a given fairy tale theme. " +
         "Valid themes: PRINCESSES, DRAGONS, KNIGHTS, WITCHES, MERMAIDS. " +
-        "Use this when the user wants inspiration or a prompt idea for a theme."
+        "Use this ONLY when the user explicitly asks for inspiration, ideas, or suggestions — " +
+        "NOT when they ask for an actual story. For stories, use getBaseStoryForTheme instead."
     )
     fun getRandomPromptForTheme(
         @LLMDescription("The theme name in uppercase, e.g. DRAGONS or PRINCESSES.")
@@ -55,9 +56,10 @@ class AgentTools : ToolSet {
 
     @Tool
     @LLMDescription(
-        "Returns a random base story for a given fairy tale theme. " +
-        "Use this when the user asks for a fairy tale or a story, " +
-        "then adapt the base story to their specific request."
+        "Returns a complete base story for a given fairy tale theme. " +
+        "Use this when the user asks for a fairy tale, a story, or wants you to tell them something. " +
+        "After calling this tool, retell the returned story in your own words as the final answer. " +
+        "Valid themes: PRINCESSES, DRAGONS, KNIGHTS, WITCHES, MERMAIDS."
     )
     fun getBaseStoryForTheme(
         @LLMDescription("The theme name in uppercase, e.g. DRAGONS or PRINCESSES.")

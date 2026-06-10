@@ -203,7 +203,12 @@ enum class Skill(
     ),
     AGENT(
         displayName = "Agent 🤖",
-        systemPrompt = """You are a helpful assistant with access to tools. Use them whenever they help answer the user's question more accurately. Think step by step.""",
+        systemPrompt = """You are a helpful assistant with access to tools. Use them whenever they help answer the user's question more accurately. Think step by step.
+
+Rules:
+- When the user asks for a story or fairy tale, call getBaseStoryForTheme — never getRandomPromptForTheme.
+- getRandomPromptForTheme only returns a one-line idea, not a story. Only use it when the user asks for inspiration or suggestions.
+- After receiving a base story from getBaseStoryForTheme, retell it as your final answer.""",
     ),
     FAIRY_TALE(
         displayName = "Fairy Tale",
