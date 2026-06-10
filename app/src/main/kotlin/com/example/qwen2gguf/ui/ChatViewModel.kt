@@ -337,6 +337,7 @@ class ChatViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        llama.close()
+        generateJob?.cancel()   // cancel coroutine first
+        llama.close()           // sets stopRequested=true, then frees native pointers
     }
 }

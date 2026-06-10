@@ -11,6 +11,7 @@
 #include "llama.h"
 
 #define TAG "LlamaAndroid"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -194,9 +195,11 @@ Java_com_example_qwen2gguf_LlamaAndroid_nativeGenerate(
         gen_batch.n_tokens = 1;
     };
 
-    // Callback
-    jclass    cb_class  = env->GetObjectClass(callback);
-    jmethodID invoke_id = env->GetMethodID(cb_class, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
+    // Callback — returns Boolean (true = continue, false = stop)
+    jclass    cb_class   = env->GetObjectClass(callback);
+    jmethodID invoke_id  = env->GetMethodID(cb_class, "invoke", "(Ljava/lang/Object;)Ljava/lang/Object;");
+    jclass    bool_class = env->FindClass("java/lang/Boolean");
+    jmethodID bool_value = env->GetMethodID(bool_class, "booleanValue", "()Z");
 
     // Sampler
     auto sparams = llama_sampler_chain_default_params();
@@ -219,9 +222,17 @@ Java_com_example_qwen2gguf_LlamaAndroid_nativeGenerate(
         int piece_len = llama_token_to_piece(vocab, new_token, piece, sizeof(piece) - 1, 0, true);
         if (piece_len > 0) {
             piece[piece_len] = '\0';
-            jstring jpiece = env->NewStringUTF(piece);
-            env->CallObjectMethod(callback, invoke_id, jpiece);
+            jstring jpiece   = env->NewStringUTF(piece);
+            jobject cb_ret   = env->CallObjectMethod(callback, invoke_id, jpiece);
             env->DeleteLocalRef(jpiece);
+            // Callback returns false when stopRequested — abort the generation loop.
+            bool should_continue = (cb_ret != nullptr) &&
+                                   env->CallBooleanMethod(cb_ret, bool_value);
+            if (cb_ret) env->DeleteLocalRef(cb_ret);
+            if (!should_continue) {
+                LOGD("nativeGenerate: stop requested via callback, breaking");
+                break;
+            }
         }
 
         batch_add_single(new_token, n_pos++);

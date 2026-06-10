@@ -27,6 +27,10 @@ class LlamaAndroid {
     private var loadedNCtx: Int = 2048
     private var loadedNThreads: Int = 6
 
+    // Flip to true before freeing native pointers so the token callback
+    // returns false and the native generation loop exits cleanly.
+    @Volatile private var stopRequested: Boolean = false
+
     // ── native declarations ───────────────────────────────────────────────────
 
     private external fun nativeLoadModel(path: String, nGpuLayers: Int): Long
@@ -35,7 +39,8 @@ class LlamaAndroid {
     private external fun nativeFreeModel(modelPtr: Long)
     private external fun nativeClearCache(ctxPtr: Long)
 
-    // Returns new nPast (prompt_tokens + generated_tokens)
+    // Returns new nPast (prompt_tokens + generated_tokens), or -1 on GPU failure.
+    // The callback returns true to continue generation, false to stop early.
     private external fun nativeGenerate(
         ctxPtr: Long,
         modelPtr: Long,
@@ -43,7 +48,7 @@ class LlamaAndroid {
         nPast: Int,
         maxNewTokens: Int,
         temperature: Float,
-        callback: (String) -> Unit,
+        callback: (String) -> Boolean,
     ): Int
 
     private external fun nativeGetContextSize(ctxPtr: Long): Int
@@ -93,6 +98,9 @@ class LlamaAndroid {
         temperature: Float = 0.7f,
     ): Flow<String> = callbackFlow {
         check(ctxPtr != 0L) { "Model not loaded" }
+        stopRequested = false
+
+        // Callback returns true to continue, false to stop (when close() was called).
         val result = nativeGenerate(
             ctxPtr       = ctxPtr,
             modelPtr     = modelPtr,
@@ -100,9 +108,13 @@ class LlamaAndroid {
             nPast        = nPast,
             maxNewTokens = maxNewTokens,
             temperature  = temperature,
-        ) { piece -> trySend(piece) }
+        ) { piece ->
+            if (stopRequested) return@nativeGenerate false
+            trySend(piece)
+            !stopRequested
+        }
 
-        if (result == -1) {
+        if (!stopRequested && result == -1) {
             // GPU decode failed — reload on CPU and re-run the same prompt
             Log.w(TAG, "nativeGenerate returned -1 (GPU failure), falling back to CPU")
             reloadOnCpu()
@@ -113,9 +125,13 @@ class LlamaAndroid {
                 nPast        = 0,
                 maxNewTokens = maxNewTokens,
                 temperature  = temperature,
-            ) { piece -> trySend(piece) }
+            ) { piece ->
+                if (stopRequested) return@nativeGenerate false
+                trySend(piece)
+                !stopRequested
+            }
             nPast = if (cpuResult >= 0) cpuResult else 0
-        } else {
+        } else if (!stopRequested) {
             nPast = result
         }
 
@@ -130,6 +146,9 @@ class LlamaAndroid {
     }
 
     fun close() {
+        // Signal any running nativeGenerate callback to stop BEFORE freeing pointers.
+        // This prevents a use-after-free SIGSEGV when the user closes the app mid-generation.
+        stopRequested = true
         if (ctxPtr   != 0L) { nativeFreeContext(ctxPtr);  ctxPtr   = 0 }
         if (modelPtr != 0L) { nativeFreeModel(modelPtr);  modelPtr = 0 }
         nPast = 0
