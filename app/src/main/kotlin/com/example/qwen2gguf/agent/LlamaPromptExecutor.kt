@@ -55,6 +55,11 @@ class LlamaPromptExecutor(
     ): Message.Assistant {
         val chatMl = buildChatMl(prompt, tools)
         Log.d(TAG, "execute() prompt length=${chatMl.length}, tools=${tools.map { it.name }}")
+        // Koog rebuilds the full prompt from scratch on every agent step. After the previous
+        // step the KV cache holds prompt+generated tokens (nPast > prompt length), so
+        // n_new = new_prompt_tokens - nPast goes negative and prefill is silently skipped.
+        // Resetting here ensures each step encodes its full prompt correctly.
+        llama.resetCache()
 
         val fullText = llama.generate(chatMl, maxTokens, temperature).toList().joinToString("")
         Log.d(TAG, "execute() raw response: $fullText")
