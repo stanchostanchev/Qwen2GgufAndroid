@@ -78,7 +78,7 @@ class ChatViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     llama.load(
                         modelPath = modelPath,
-                        nCtx = 4096,
+                        nCtx = if (model.isQwen3) 8192 else 4096,
                         nThreads = 6,
                         nGpuLayers = DeviceInfo.defaultGpuLayers,
                     )
@@ -112,14 +112,20 @@ class ChatViewModel @Inject constructor(
         generateJob = viewModelScope.launch {
             // Fairy tale prompts are always single-turn — reset the KV cache so nPast
             // never exceeds the new prompt length.
-            if (_uiState.value.selectedSkill == Skill.FAIRY_TALE) {
+            if (isFairyTale) {
                 withContext(Dispatchers.IO) { llama.resetCache() }
             }
-            val (prompt, baseTale) = buildQwen2Prompt(_uiState.value.messages.dropLast(1))
+            val (prompt, baseTale) = buildPrompt(_uiState.value.messages.dropLast(1))
 
             // Fairy tale: model edits an existing base story so needs fewer tokens.
-            val maxTokens = if (_uiState.value.selectedSkill == Skill.FAIRY_TALE) 180 else 512
-            val temperature = if (_uiState.value.selectedSkill == Skill.FAIRY_TALE) 0.5f else 0.7f
+            val isFairyTale = _uiState.value.selectedSkill == Skill.FAIRY_TALE
+            val isQwen3 = _uiState.value.selectedModel.isQwen3
+            val maxTokens = when {
+                isFairyTale -> 180
+                isQwen3 -> 1024   // Qwen3 benefits from more room for reasoning + answer
+                else -> 512
+            }
+            val temperature = if (isFairyTale) 0.5f else 0.7f
             llama.generate(prompt = prompt, maxNewTokens = maxTokens, temperature = temperature)
                 .catch { e ->
                     Log.e(TAG, "Generation failed", e)
@@ -130,10 +136,13 @@ class ChatViewModel @Inject constructor(
                         val updated = state.messages.toMutableList()
                         val last = updated.last()
                         if (last.role == ChatMessage.Role.Assistant) {
-                            // For fairy tales: trim to 4 complete sentences at a sentence boundary
-                            val finalContent = if (state.selectedSkill == Skill.FAIRY_TALE)
-                                capToSentences(last.content, maxSentences = 4)
+                            // Strip Qwen3 <think>…</think> block, then apply fairy-tale sentence cap
+                            val withoutThinking = if (state.selectedModel.isQwen3)
+                                stripThinkingBlock(last.content)
                             else last.content
+                            val finalContent = if (state.selectedSkill == Skill.FAIRY_TALE)
+                                capToSentences(withoutThinking, maxSentences = 4)
+                            else withoutThinking
                             updated[updated.lastIndex] = last.copy(
                                 content = finalContent,
                                 baseTale = baseTale,
@@ -181,14 +190,28 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(messages = emptyList(), error = null) }
     }
 
-    // ── Qwen2 chat template ───────────────────────────────────────────────────
+    // ── Chat template (Qwen2 & Qwen3 both use ChatML) ────────────────────────
 
-    /** Returns the full prompt string plus the base tale used (null if not fairy-tale mode). */
-    private fun buildQwen2Prompt(
+    /**
+     * Builds the full prompt and returns it alongside the base tale used (null outside fairy-tale
+     * mode).
+     *
+     * Qwen3 specifics:
+     *  - Append " /no_think" to the last user message to suppress the <think> chain-of-thought
+     *    block for tasks where speed matters (fairy tales, simple assistant replies).
+     *  - For agentic/reasoning tasks leave thinking ON — omit /no_think so the model reasons
+     *    step-by-step before answering. The <think>…</think> block is then stripped from the
+     *    visible bubble by [stripThinkingBlock].
+     */
+    private fun buildPrompt(
         history: List<ChatMessage>,
     ): Pair<String, Pair<String, String>?> {
         val state = _uiState.value
         val isFairyTale = state.selectedSkill == Skill.FAIRY_TALE
+        val isQwen3 = state.selectedModel.isQwen3
+        // For fairy tales and simple assistant mode suppress Qwen3 thinking to save tokens.
+        val suppressThinking = isQwen3
+
         var chosenBaseTale: Pair<String, String>? = null
 
         val prompt = buildString {
@@ -201,16 +224,22 @@ class ChatViewModel @Inject constructor(
                 val baseTale = chosenBaseTale!!
                 val latestUserMsg = history.lastOrNull { it.role == ChatMessage.Role.User }
                 val userRequest = latestUserMsg?.content ?: ""
+                val noThinkSuffix = if (suppressThinking) " /no_think" else ""
                 val augmented = buildString {
                     appendLine("Base story: ${baseTale.second.trim()}")
-                    appendLine("Request: $userRequest")
+                    appendLine("Request: $userRequest$noThinkSuffix")
                     append("Retell the base story above keeping the same plot. Only swap the character types to match the request.")
                 }
                 append("<|im_start|>user\n$augmented<|im_end|>\n")
             } else {
-                for (msg in history) {
+                for ((idx, msg) in history.withIndex()) {
                     val role = if (msg.role == ChatMessage.Role.User) "user" else "assistant"
-                    append("<|im_start|>$role\n${msg.content}<|im_end|>\n")
+                    val isLastUser = msg.role == ChatMessage.Role.User && idx == history.lastIndex
+                    val content = if (isLastUser && suppressThinking)
+                        "${msg.content} /no_think"
+                    else
+                        msg.content
+                    append("<|im_start|>$role\n$content<|im_end|>\n")
                 }
             }
 
@@ -221,6 +250,17 @@ class ChatViewModel @Inject constructor(
         }
 
         return prompt to chosenBaseTale
+    }
+
+    /**
+     * Strips the Qwen3 chain-of-thought block from generated text.
+     * The model emits "<think>\n…\n</think>\n" before its actual answer when thinking is ON.
+     * We remove it so the chat bubble shows only the final answer.
+     */
+    private fun stripThinkingBlock(text: String): String {
+        // Pattern: optional leading <think> … </think> followed by optional whitespace
+        val thinkRegex = Regex("""^\s*<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL)
+        return thinkRegex.replace(text, "")
     }
 
     /**
