@@ -159,7 +159,7 @@ class ChatViewModel @Inject constructor(
                 val last = updated.last()
                 if (last.role == ChatMessage.Role.Assistant) {
                     updated[updated.lastIndex] = last.copy(
-                        content = answer ?: "",
+                        content = stripThinkingBlock(answer ?: ""),
                         toolSteps = toolSteps,
                     )
                 }
