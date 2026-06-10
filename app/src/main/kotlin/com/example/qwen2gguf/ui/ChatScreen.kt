@@ -435,11 +435,54 @@ private fun MessageBubble(message: ChatMessage) {
                     )
                 }
 
+                // Tool steps — shown for agent messages
+                if (!isUser && message.toolSteps.isNotEmpty()) {
+                    ToolStepsSection(message.toolSteps)
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        thickness = 0.5.dp,
+                    )
+                }
+
                 Text(
                     text = message.content,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolStepsSection(steps: List<ToolStep>) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        TextButton(
+            onClick = { expanded = !expanded },
+            contentPadding = PaddingValues(0.dp),
+        ) {
+            Text(
+                text = if (expanded) "🔧 ${steps.size} tool call(s) ▲" else "🔧 ${steps.size} tool call(s) ▾",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (expanded) {
+            steps.forEach { step ->
+                Column(modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        text = "▶ ${step.toolName}(${step.args})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "  ← ${step.result}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -540,6 +583,7 @@ private fun InputBar(
     fun submit() {
         if (text.isNotBlank()) {
             onSend(text)
+            onTextChange("")
         }
     }
 

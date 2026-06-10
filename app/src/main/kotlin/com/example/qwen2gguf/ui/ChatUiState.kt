@@ -201,6 +201,10 @@ enum class Skill(
         displayName = "Assistant",
         systemPrompt = "You are a helpful assistant.",
     ),
+    AGENT(
+        displayName = "Agent 🤖",
+        systemPrompt = """You are a helpful assistant with access to tools. Use them whenever they help answer the user's question more accurately. Think step by step.""",
+    ),
     FAIRY_TALE(
         displayName = "Fairy Tale",
         systemPrompt = """You are a fairy tale editor. You will be given a base story and a request. Retell the base story keeping the exact same plot and moral, but replace the character types to match the request. Keep the same sentence structure. Here is an example:
@@ -230,9 +234,18 @@ data class ChatMessage(
     val content: String,
     /** The base fairy tale used to generate this message, if any. */
     val baseTale: Pair<String, String>? = null,
+    /** Tool calls made by the agent while producing this answer (displayed as steps). */
+    val toolSteps: List<ToolStep> = emptyList(),
 ) {
     enum class Role { User, Assistant }
 }
+
+/** A single tool call the agent made, shown in the chat as a collapsible step. */
+data class ToolStep(
+    val toolName: String,
+    val args: String,
+    val result: String,
+)
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),

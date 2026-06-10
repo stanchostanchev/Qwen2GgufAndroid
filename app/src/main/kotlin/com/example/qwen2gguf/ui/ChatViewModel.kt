@@ -4,9 +4,17 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ai.koog.agents.core.agent.AIAgent
+import ai.koog.agents.core.agent.GraphAgentBuilder
+import ai.koog.agents.core.agent.config.AIAgentConfig
+import ai.koog.agents.core.agent.singleRunStrategy
+import ai.koog.agents.core.tools.ToolRegistryBuilder
 import com.example.qwen2gguf.AssetExtractor
 import com.example.qwen2gguf.DeviceInfo
 import com.example.qwen2gguf.LlamaAndroid
+import com.example.qwen2gguf.agent.AgentTools
+import com.example.qwen2gguf.agent.LlamaPromptExecutor
+import com.example.qwen2gguf.agent.LocalQwen3Model
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +108,7 @@ class ChatViewModel @Inject constructor(
 
         val userMsg = ChatMessage(ChatMessage.Role.User, userText.trim())
         val isFairyTale = _uiState.value.selectedSkill == Skill.FAIRY_TALE
+        val isAgent = _uiState.value.selectedSkill == Skill.AGENT
         val assistantSeed = if (isFairyTale) "Once upon a time," else ""
         _uiState.update { state ->
             state.copy(
@@ -110,60 +119,111 @@ class ChatViewModel @Inject constructor(
         }
 
         generateJob = viewModelScope.launch {
-            // Fairy tale prompts are always single-turn — reset the KV cache so nPast
-            // never exceeds the new prompt length.
-            if (isFairyTale) {
-                withContext(Dispatchers.IO) { llama.resetCache() }
+            if (isAgent) {
+                runAgentTurn(userText.trim())
+            } else {
+                runDirectGeneration(isFairyTale)
             }
-            val (prompt, baseTale) = buildPrompt(_uiState.value.messages.dropLast(1))
+        }
+    }
 
-            // Fairy tale: model edits an existing base story so needs fewer tokens.
-            val isFairyTale = _uiState.value.selectedSkill == Skill.FAIRY_TALE
-            val isQwen3 = _uiState.value.selectedModel.isQwen3
-            val maxTokens = when {
-                isFairyTale -> 180
-                isQwen3 -> 1024   // Qwen3 benefits from more room for reasoning + answer
-                else -> 512
-            }
-            val temperature = if (isFairyTale) 0.5f else 0.7f
-            llama.generate(prompt = prompt, maxNewTokens = maxTokens, temperature = temperature)
-                .catch { e ->
-                    Log.e(TAG, "Generation failed", e)
-                    _uiState.update { it.copy(error = e.message, isGenerating = false) }
+    // ── Agent turn via Koog ───────────────────────────────────────────────────
+
+    private suspend fun runAgentTurn(userText: String) {
+        try {
+            val executor = LlamaPromptExecutor(llama, temperature = 0.7f, maxTokens = 1024)
+            val registry = ToolRegistryBuilder().tools(AgentTools()).build()
+
+            val systemPrompt = _uiState.value.selectedSkill.systemPrompt
+            val agentConfig = AIAgentConfig.withSystemPrompt(
+                prompt = systemPrompt,
+                llm = LocalQwen3Model,
+                maxAgentIterations = 5,
+            )
+
+            val agent: AIAgent<String, String> = GraphAgentBuilder<String, String>(
+                strategy = singleRunStrategy(),
+                promptExecutor = executor,
+                toolRegistry = registry,
+                config = agentConfig,
+            ).build()
+
+            // Collect tool-call steps as the agent runs
+            val toolSteps = mutableListOf<ToolStep>()
+
+            // Run the agent — it will call tools and produce a final answer
+            val answer = withContext(Dispatchers.IO) { agent.run(userText) }
+
+            _uiState.update { state ->
+                val updated = state.messages.toMutableList()
+                val last = updated.last()
+                if (last.role == ChatMessage.Role.Assistant) {
+                    updated[updated.lastIndex] = last.copy(
+                        content = answer ?: "",
+                        toolSteps = toolSteps,
+                    )
                 }
-                .onCompletion {
-                    _uiState.update { state ->
-                        val updated = state.messages.toMutableList()
-                        val last = updated.last()
-                        if (last.role == ChatMessage.Role.Assistant) {
-                            // Strip Qwen3 <think>…</think> block, then apply fairy-tale sentence cap
-                            val withoutThinking = if (state.selectedModel.isQwen3)
-                                stripThinkingBlock(last.content)
-                            else last.content
-                            val finalContent = if (state.selectedSkill == Skill.FAIRY_TALE)
-                                capToSentences(withoutThinking, maxSentences = 4)
-                            else withoutThinking
-                            updated[updated.lastIndex] = last.copy(
-                                content = finalContent,
-                                baseTale = baseTale,
-                            )
-                        }
-                        state.copy(
-                            messages = updated,
-                            isGenerating = false,
-                            gpuFallback = llama.gpuFailed,
+                state.copy(messages = updated, isGenerating = false, gpuFallback = llama.gpuFailed)
+            }
+
+            agent.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Agent run failed", e)
+            _uiState.update { it.copy(error = e.message, isGenerating = false) }
+        }
+    }
+
+    // ── Direct generation (Assistant + Fairy Tale skills) ────────────────────
+
+    private suspend fun runDirectGeneration(isFairyTale: Boolean) {
+        if (isFairyTale) {
+            withContext(Dispatchers.IO) { llama.resetCache() }
+        }
+        val (prompt, baseTale) = buildPrompt(_uiState.value.messages.dropLast(1))
+
+        val isQwen3 = _uiState.value.selectedModel.isQwen3
+        val maxTokens = when {
+            isFairyTale -> 180
+            isQwen3 -> 1024
+            else -> 512
+        }
+        val temperature = if (isFairyTale) 0.5f else 0.7f
+        llama.generate(prompt = prompt, maxNewTokens = maxTokens, temperature = temperature)
+            .catch { e ->
+                Log.e(TAG, "Generation failed", e)
+                _uiState.update { it.copy(error = e.message, isGenerating = false) }
+            }
+            .onCompletion {
+                _uiState.update { state ->
+                    val updated = state.messages.toMutableList()
+                    val last = updated.last()
+                    if (last.role == ChatMessage.Role.Assistant) {
+                        val withoutThinking = if (state.selectedModel.isQwen3)
+                            stripThinkingBlock(last.content)
+                        else last.content
+                        val finalContent = if (state.selectedSkill == Skill.FAIRY_TALE)
+                            capToSentences(withoutThinking, maxSentences = 4)
+                        else withoutThinking
+                        updated[updated.lastIndex] = last.copy(
+                            content = finalContent,
+                            baseTale = baseTale,
                         )
                     }
+                    state.copy(
+                        messages = updated,
+                        isGenerating = false,
+                        gpuFallback = llama.gpuFailed,
+                    )
                 }
-                .collect { piece ->
-                    _uiState.update { state ->
-                        val updated = state.messages.toMutableList()
-                        val last = updated.last()
-                        updated[updated.lastIndex] = last.copy(content = last.content + piece)
-                        state.copy(messages = updated)
-                    }
+            }
+            .collect { piece ->
+                _uiState.update { state ->
+                    val updated = state.messages.toMutableList()
+                    val last = updated.last()
+                    updated[updated.lastIndex] = last.copy(content = last.content + piece)
+                    state.copy(messages = updated)
                 }
-        }
+            }
     }
 
     fun selectSkill(skill: Skill) {
