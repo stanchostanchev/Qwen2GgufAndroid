@@ -160,8 +160,9 @@ class LlamaPromptExecutor(
                 }
             }
         }
-        // Open the assistant turn for generation
-        append("<|im_start|>assistant\n")
+        // Open the assistant turn. Pre-fill <think> so Qwen3 opens a proper think block
+        // and closes it with </think> before generating the tool call or final answer.
+        append("<|im_start|>assistant\n<think>\n")
     }
 
     /**
@@ -206,7 +207,10 @@ class LlamaPromptExecutor(
      */
     private fun parseResponse(raw: String): Message.Assistant {
         // Strip Qwen3 <think>…</think> block
-        val text = raw
+        // We pre-fill "<think>\n" so generated text starts inside the think block.
+        // Prepend the opening tag so the regex can match and strip it.
+        val normalized = if (!raw.trimStart().startsWith("<think>")) "<think>\n$raw" else raw
+        val text = normalized
             .replace(Regex("""<\|im_start\|>(assistant|user|system|tool)\s*"""), "")
             .replace("<|im_end|>", "")
             .replace(Regex("""^(assistant|user|system)\s*\n""", RegexOption.MULTILINE), "")

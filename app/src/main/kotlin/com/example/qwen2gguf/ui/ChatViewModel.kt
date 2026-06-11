@@ -316,10 +316,12 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
-            // Pre-fill the assistant turn for fairy tales so the model continues
-            // directly into the story without repeating instructions.
-            if (isFairyTale) append("<|im_start|>assistant\nOnce upon a time,")
-            else append("<|im_start|>assistant\n")
+            // Pre-fill the assistant turn. For Qwen3 thinking models, seed with <think>\n
+            // so the model opens a proper think block and closes it with </think> before
+            // generating the actual answer. Without this the model generates garbled output.
+            val isQwen3 = state.selectedModel.isQwen3
+            if (isFairyTale) append("<|im_start|>assistant\n${if (isQwen3) "<think>\n" else ""}Once upon a time,")
+            else append("<|im_start|>assistant\n${if (isQwen3) "<think>\n" else ""}")
         }
 
         return prompt to chosenBaseTale
@@ -329,14 +331,20 @@ class ChatViewModel @Inject constructor(
      * Cleans raw model output:
      * 1. Strips ChatML role tokens the model sometimes echoes (<|im_start|>role, <|im_end|>).
      * 2. Strips Qwen3 <think>…</think> blocks wherever they appear.
-     *    If the block was cut off by maxTokens (no closing </think>), strips from <think> to end.
+     *    Because we pre-fill "<think>\n", generated text starts INSIDE the think block
+     *    (no opening tag). We prepend <think> so the regex can match and strip it.
+     *    If the block is unclosed (cut by maxTokens), strips from <think> to end.
      */
     private fun stripThinkingBlock(text: String): String {
-        val cleaned = text
+        val isQwen3 = _uiState.value.selectedModel.isQwen3
+        val normalized = if (isQwen3 && !text.trimStart().startsWith("<think>"))
+            "<think>\n$text"
+        else
+            text
+        val cleaned = normalized
             .replace(Regex("""<\|im_start\|>(assistant|user|system|tool)\s*"""), "")
             .replace("<|im_end|>", "")
             .replace(Regex("""^(assistant|user|system)\s*\n""", RegexOption.MULTILINE), "")
-        // Strip closed think blocks first, then any unclosed one trailing at end
         return cleaned
             .replace(Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "")
             .replace(Regex("""<think>.*""", RegexOption.DOT_MATCHES_ALL), "")
