@@ -199,7 +199,7 @@ enum class Skill(
 ) {
     ASSISTANT(
         displayName = "Assistant",
-        systemPrompt = "You are a helpful assistant.",
+        systemPrompt = "You are a helpful assistant. Think step by step before answering.",
     ),
     AGENT(
         displayName = "Agent 🤖",
@@ -212,7 +212,13 @@ Rules:
     ),
     FAIRY_TALE(
         displayName = "Fairy Tale",
-        systemPrompt = """You are a fairy tale editor. You will be given a base story and a request. Retell the base story keeping the exact same plot and moral, but replace the character types to match the request. Keep the same sentence structure. Here is an example:
+        systemPrompt = """You are a fairy tale editor. Before writing, think step by step:
+1. Identify the characters in the base story.
+2. Map each character to the new type requested.
+3. Keep the same plot events and moral.
+4. Retell using the same sentence structure, only swapping the character types.
+
+You will be given a base story and a request. Here is an example:
 
 Base story: A dragon burned a village by accident and spent the winter rebuilding every house with carpenter Brix. By spring the village was better than before, and Brix said: we could use someone who stays to fix what they break.
 Request: story about a witch and a knight
