@@ -44,6 +44,7 @@ class LlamaPromptExecutor(
     private val llama: LlamaAndroid,
     private val temperature: Float = 0.7f,
     private val maxTokens: Int = 1024,
+    val onToolStep: ((name: String, args: String, result: String) -> Unit)? = null,
 ) : PromptExecutor() {
 
     // ── Public Koog API ───────────────────────────────────────────────────────
@@ -53,6 +54,8 @@ class LlamaPromptExecutor(
         model: LLModel,
         tools: List<ToolDescriptor>,
     ): Message.Assistant {
+        // Fire callbacks for any tool results that just arrived in this prompt
+        if (onToolStep != null) notifyToolSteps(prompt)
         val chatMl = buildChatMl(prompt, tools)
         Log.d(TAG, "execute() prompt length=${chatMl.length}, tools=${tools.map { it.name }}")
         // Koog rebuilds the full prompt from scratch on every agent step. After the previous
@@ -87,6 +90,29 @@ class LlamaPromptExecutor(
         throw UnsupportedOperationException("Moderation not supported by local llama.cpp")
 
     override fun close() { /* llama lifecycle managed by ViewModel */ }
+
+    // ── Tool step tracking ────────────────────────────────────────────────────
+
+    /**
+     * Scans the prompt for (assistant tool-call, user tool-result) pairs that haven't been
+     * reported yet and fires [onToolStep] for each new one. Called at the start of execute()
+     * so the ViewModel can accumulate steps as the agent loop progresses.
+     */
+    private fun notifyToolSteps(prompt: Prompt) {
+        val messages = prompt.messages
+        for (i in messages.indices) {
+            val msg = messages[i]
+            if (msg !is Message.User) continue
+            val results = msg.parts.filterIsInstance<MessagePart.Tool.Result>()
+            if (results.isEmpty()) continue
+            // Find the assistant message immediately before this one
+            val prev = messages.getOrNull(i - 1) as? Message.Assistant ?: continue
+            val calls = prev.parts.filterIsInstance<MessagePart.Tool.Call>()
+            calls.zip(results).forEach { (call, result) ->
+                onToolStep?.invoke(call.tool, call.args, result.output)
+            }
+        }
+    }
 
     // ── ChatML builder ────────────────────────────────────────────────────────
 

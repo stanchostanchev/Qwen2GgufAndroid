@@ -389,13 +389,20 @@ private fun MessageBubble(message: ChatMessage, onUserBubbleTap: (String) -> Uni
     var showBaseTaleSheet by rememberSaveable { mutableStateOf(false) }
     val baseTaleSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
-    if (showBaseTaleSheet && message.baseTale != null) {
+    // Base tale from Fairy Tale mode, or from agent's getBaseStoryForTheme tool step
+    val agentBaseTale = message.toolSteps
+        .firstOrNull { it.toolName == "getBaseStoryForTheme" }
+        ?.let { step -> step.args to step.result }
+    val effectiveBaseTale = message.baseTale ?: agentBaseTale
+    val hasBaseTale = !isUser && effectiveBaseTale != null
+
+    if (showBaseTaleSheet && effectiveBaseTale != null) {
         ModalBottomSheet(
             onDismissRequest = { showBaseTaleSheet = false },
             sheetState = baseTaleSheetState,
             dragHandle = { BottomSheetDefaults.DragHandle() },
         ) {
-            BaseTaleBottomSheet(baseTale = message.baseTale)
+            BaseTaleBottomSheet(baseTale = effectiveBaseTale)
         }
     }
 
@@ -438,7 +445,7 @@ private fun MessageBubble(message: ChatMessage, onUserBubbleTap: (String) -> Uni
                         modifier = Modifier.padding(
                             start = 12.dp,
                             top = 8.dp,
-                            end = if (!isUser && message.baseTale != null) 36.dp else 12.dp,
+                            end = if (hasBaseTale) 36.dp else 12.dp,
                             bottom = 8.dp,
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -447,7 +454,7 @@ private fun MessageBubble(message: ChatMessage, onUserBubbleTap: (String) -> Uni
             }
 
             // Book icon — bottom-right corner of assistant cards that have a base tale
-            if (!isUser && message.baseTale != null) {
+            if (hasBaseTale) {
                 IconButton(
                     onClick = { showBaseTaleSheet = true },
                     modifier = Modifier

@@ -135,7 +135,13 @@ class ChatViewModel @Inject constructor(
             // agent run would cause n_new = n_tokens - n_past to go negative, skipping
             // prefill entirely and producing garbage on the second and later turns.
             withContext(Dispatchers.IO) { llama.resetCache() }
-            val executor = LlamaPromptExecutor(llama, temperature = 0.7f, maxTokens = 1024)
+            val toolSteps = mutableListOf<ToolStep>()
+            val executor = LlamaPromptExecutor(
+                llama = llama,
+                temperature = 0.7f,
+                maxTokens = 1024,
+                onToolStep = { name, args, result -> toolSteps.add(ToolStep(name, args, result)) },
+            )
             val registry = ToolRegistryBuilder().tools(AgentTools()).build()
 
             val systemPrompt = _uiState.value.selectedSkill.systemPrompt
@@ -151,9 +157,6 @@ class ChatViewModel @Inject constructor(
                 toolRegistry = registry,
                 config = agentConfig,
             ).build()
-
-            // Collect tool-call steps as the agent runs
-            val toolSteps = mutableListOf<ToolStep>()
 
             // Run the agent — it will call tools and produce a final answer
             val answer = withContext(Dispatchers.IO) { agent.run(userText) }
