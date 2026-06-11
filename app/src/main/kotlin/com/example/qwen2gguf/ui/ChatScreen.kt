@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -402,60 +403,65 @@ private fun MessageBubble(message: ChatMessage, onUserBubbleTap: (String) -> Uni
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
-        Card(
-            shape = RoundedCornerShape(
-                topStart = 16.dp, topEnd = 16.dp,
-                bottomStart = if (isUser) 16.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 16.dp,
-            ),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isUser)
-                    MaterialTheme.colorScheme.primaryContainer
-                else
-                    MaterialTheme.colorScheme.surfaceVariant,
-            ),
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .then(
-                    if (isUser) Modifier.clickable { onUserBubbleTap(message.content) }
-                    else Modifier
+        Box {
+            Card(
+                shape = RoundedCornerShape(
+                    topStart = 16.dp, topEnd = 16.dp,
+                    bottomStart = if (isUser) 16.dp else 4.dp,
+                    bottomEnd = if (isUser) 4.dp else 16.dp,
                 ),
-        ) {
-            Column {
-                // "📖 Base tale" button — only on assistant messages that have one
-                if (!isUser && message.baseTale != null) {
-                    TextButton(
-                        onClick = { showBaseTaleSheet = true },
-                        modifier = Modifier
-                            .padding(start = 4.dp, top = 4.dp, end = 4.dp, bottom = 0.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = "📖 Base tale",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isUser)
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .then(
+                        if (isUser) Modifier.clickable { onUserBubbleTap(message.content) }
+                        else Modifier
+                    ),
+            ) {
+                Column {
+                    // Tool steps — shown for agent messages
+                    if (!isUser && message.toolSteps.isNotEmpty()) {
+                        ToolStepsSection(message.toolSteps)
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            thickness = 0.5.dp,
                         )
                     }
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        thickness = 0.5.dp,
+
+                    Text(
+                        text = message.content,
+                        modifier = Modifier.padding(
+                            start = 12.dp,
+                            top = 8.dp,
+                            end = if (!isUser && message.baseTale != null) 36.dp else 12.dp,
+                            bottom = 8.dp,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+            }
 
-                // Tool steps — shown for agent messages
-                if (!isUser && message.toolSteps.isNotEmpty()) {
-                    ToolStepsSection(message.toolSteps)
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        thickness = 0.5.dp,
+            // Book icon — bottom-right corner of assistant cards that have a base tale
+            if (!isUser && message.baseTale != null) {
+                IconButton(
+                    onClick = { showBaseTaleSheet = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(28.dp)
+                        .padding(end = 4.dp, bottom = 4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MenuBook,
+                        contentDescription = "Base tale",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
                     )
                 }
-
-                Text(
-                    text = message.content,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
             }
         }
     }
