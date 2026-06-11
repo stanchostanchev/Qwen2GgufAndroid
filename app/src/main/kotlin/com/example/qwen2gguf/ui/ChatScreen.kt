@@ -148,6 +148,7 @@ fun ChatScreen(
             MessageList(
                 messages = uiState.messages,
                 isGenerating = uiState.isGenerating,
+                onUserBubbleTap = { inputText = it },
                 modifier = Modifier.weight(1f),
             )
 
@@ -349,6 +350,7 @@ private fun ModelSelector(
 private fun MessageList(
     messages: List<ChatMessage>,
     isGenerating: Boolean,
+    onUserBubbleTap: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -364,7 +366,7 @@ private fun MessageList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(messages.size, key = { idx -> idx }) { idx ->
-            MessageBubble(messages[idx])
+            MessageBubble(messages[idx], onUserBubbleTap = onUserBubbleTap)
         }
         if (isGenerating && messages.lastOrNull()?.content?.isEmpty() == true) {
             item {
@@ -381,7 +383,7 @@ private fun MessageList(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, onUserBubbleTap: (String) -> Unit = {}) {
     val isUser = message.role == ChatMessage.Role.User
     var showBaseTaleSheet by rememberSaveable { mutableStateOf(false) }
     val baseTaleSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
@@ -412,7 +414,12 @@ private fun MessageBubble(message: ChatMessage) {
                 else
                     MaterialTheme.colorScheme.surfaceVariant,
             ),
-            modifier = Modifier.widthIn(max = 300.dp),
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .then(
+                    if (isUser) Modifier.clickable { onUserBubbleTap(message.content) }
+                    else Modifier
+                ),
         ) {
             Column {
                 // "📖 Base tale" button — only on assistant messages that have one
