@@ -206,7 +206,7 @@ class LlamaPromptExecutor(
      */
     private fun parseResponse(raw: String): Message.Assistant {
         // Strip Qwen3 <think>…</think> block
-        val text = raw.replace(Regex("""^\s*<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "").trim()
+        val text = raw.replace(Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "").trim()
 
         val toolMatches = toolCallRegex.findAll(text).toList()
         return if (toolMatches.isNotEmpty()) {

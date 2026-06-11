@@ -326,14 +326,13 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Strips the Qwen3 chain-of-thought block from generated text.
-     * The model emits "<think>\n…\n</think>\n" before its actual answer when thinking is ON.
-     * We remove it so the chat bubble shows only the final answer.
+     * Strips Qwen3 chain-of-thought blocks from generated text.
+     * Handles both leading blocks (<think> at start) and mid-text blocks that appear after
+     * a pre-filled prefix like "Once upon a time," when the model ignores /no_think.
      */
     private fun stripThinkingBlock(text: String): String {
-        // Pattern: optional leading <think> … </think> followed by optional whitespace
-        val thinkRegex = Regex("""^\s*<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL)
-        return thinkRegex.replace(text, "")
+        val thinkRegex = Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL)
+        return thinkRegex.replace(text, "").trim()
     }
 
     /**
