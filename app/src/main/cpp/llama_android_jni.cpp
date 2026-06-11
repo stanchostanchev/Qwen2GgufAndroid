@@ -201,11 +201,13 @@ Java_com_example_qwen2gguf_LlamaAndroid_nativeGenerate(
     jclass    bool_class = env->FindClass("java/lang/Boolean");
     jmethodID bool_value = env->GetMethodID(bool_class, "booleanValue", "()Z");
 
-    // Sampler
+    // Sampler — mirrors the HuggingFace inference params that produce good output:
+    //   repetition_penalty=1.1, top_p=0.92, temperature=0.8
+    // Penalty 1.3 was too aggressive and prevented </think> from being generated.
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
-    // Penalise the last 64 tokens to prevent repetition loops
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.3f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.92f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
     llama_sampler_chain_add(smpl, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 

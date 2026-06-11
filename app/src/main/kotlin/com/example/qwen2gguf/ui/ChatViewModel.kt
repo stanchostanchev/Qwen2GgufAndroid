@@ -200,7 +200,7 @@ class ChatViewModel @Inject constructor(
             isQwen3 -> 1024
             else -> 512
         }
-        val temperature = if (isFairyTale) 0.5f else 0.7f
+        val temperature = if (isFairyTale) 0.8f else 0.7f
         llama.generate(prompt = prompt, maxNewTokens = maxTokens, temperature = temperature)
             .catch { e ->
                 Log.e(TAG, "Generation failed", e)
