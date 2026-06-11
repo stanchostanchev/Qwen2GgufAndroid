@@ -326,13 +326,18 @@ class ChatViewModel @Inject constructor(
     }
 
     /**
-     * Strips Qwen3 chain-of-thought blocks from generated text.
-     * Handles both leading blocks (<think> at start) and mid-text blocks that appear after
-     * a pre-filled prefix like "Once upon a time," when the model ignores /no_think.
+     * Cleans raw model output:
+     * 1. Strips ChatML role tokens the model sometimes echoes into its output
+     *    (<|im_start|>role, <|im_end|>, bare "assistant"/"user" lines).
+     * 2. Strips Qwen3 <think>…</think> blocks wherever they appear.
      */
     private fun stripThinkingBlock(text: String): String {
-        val thinkRegex = Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL)
-        return thinkRegex.replace(text, "").trim()
+        return text
+            .replace(Regex("""<\|im_start\|>(assistant|user|system|tool)\s*"""), "")
+            .replace("<|im_end|>", "")
+            .replace(Regex("""^(assistant|user|system)\s*\n""", RegexOption.MULTILINE), "")
+            .replace(Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "")
+            .trim()
     }
 
     /**
