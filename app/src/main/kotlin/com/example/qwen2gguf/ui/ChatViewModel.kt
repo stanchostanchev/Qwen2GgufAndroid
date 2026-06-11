@@ -196,7 +196,7 @@ class ChatViewModel @Inject constructor(
 
         val isQwen3 = _uiState.value.selectedModel.isQwen3
         val maxTokens = when {
-            isFairyTale -> 180
+            isFairyTale -> 512   // needs room for <think> block + actual story
             isQwen3 -> 1024
             else -> 512
         }
@@ -327,16 +327,19 @@ class ChatViewModel @Inject constructor(
 
     /**
      * Cleans raw model output:
-     * 1. Strips ChatML role tokens the model sometimes echoes into its output
-     *    (<|im_start|>role, <|im_end|>, bare "assistant"/"user" lines).
+     * 1. Strips ChatML role tokens the model sometimes echoes (<|im_start|>role, <|im_end|>).
      * 2. Strips Qwen3 <think>…</think> blocks wherever they appear.
+     *    If the block was cut off by maxTokens (no closing </think>), strips from <think> to end.
      */
     private fun stripThinkingBlock(text: String): String {
-        return text
+        val cleaned = text
             .replace(Regex("""<\|im_start\|>(assistant|user|system|tool)\s*"""), "")
             .replace("<|im_end|>", "")
             .replace(Regex("""^(assistant|user|system)\s*\n""", RegexOption.MULTILINE), "")
+        // Strip closed think blocks first, then any unclosed one trailing at end
+        return cleaned
             .replace(Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""<think>.*""", RegexOption.DOT_MATCHES_ALL), "")
             .trim()
     }
 

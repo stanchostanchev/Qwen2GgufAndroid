@@ -211,6 +211,7 @@ class LlamaPromptExecutor(
             .replace("<|im_end|>", "")
             .replace(Regex("""^(assistant|user|system)\s*\n""", RegexOption.MULTILINE), "")
             .replace(Regex("""<think>.*?</think>\s*""", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("""<think>.*""", RegexOption.DOT_MATCHES_ALL), "")
             .trim()
 
         val toolMatches = toolCallRegex.findAll(text).toList()
